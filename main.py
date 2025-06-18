@@ -64,10 +64,11 @@ def list_flights_by_country():
     console.print(f"[cyan]🔍 Recherche des vols pour : {country.name} ({country_code})[/cyan]")
 
     try:
-        airports = fr.get_airports(country_code)
+        all_airports = fr.get_airports()
+        airports = [a for a in all_airports if a.get("country") == country.name]
     except Exception as e:
         console.print(f"[red]Erreur récupération aéroports : {e}[/red]")
-        return None
+    return None
 
     if not airports:
         console.print("[yellow]⚠️ Aucun aéroport trouvé pour ce pays.[/yellow]")
