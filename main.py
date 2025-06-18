@@ -1,77 +1,51 @@
-import time
+import flightradar24
 import json
-import pycountry
-from flightradar24 import Api
+import time
 from rich.console import Console
 from rich.table import Table
-from rich.prompt import Prompt, IntPrompt
+from rich.prompt import Prompt
 
+fr = flightradar24.Api()
 console = Console()
-fr = Api()
-
-def get_country_code_by_name(name):
-    try:
-        country = pycountry.countries.lookup(name)
-        return country.alpha_2, country.name
-    except LookupError:
-        return None, None
 
 def list_airports_by_country(country_name):
     try:
-        raw = fr.get_airports()
-        all_airports = json.loads(raw)
+        airports_data = fr.get_airports()
+        # Debug pour voir la structure (à commenter après)
+        # console.print(json.dumps(airports_data, indent=2))
+        
+        all_airports = airports_data.get('airports', [])
         airports = [a for a in all_airports if a.get("country") == country_name]
         return airports
     except Exception as e:
         console.print(f"[red]Erreur récupération aéroports : {e}[/red]")
         return []
 
-def get_flights_by_airports(airports):
-    flights = []
-    for airport in airports:
-        icao = airport.get("icao")
-        if not icao:
-            continue
-        try:
-            airport_flights = fr.get_flights(icao)
-            if airport_flights:
-                flights.extend(airport_flights)
-        except Exception:
-            # skip if API fails for an airport
-            continue
-    return flights
+def list_flights_by_airport(airport_code):
+    try:
+        flights = fr.get_flights(airport_code)
+        return flights
+    except Exception as e:
+        console.print(f"[red]Erreur récupération vols pour {airport_code} : {e}[/red]")
+        return []
 
-def select_flight(flights):
-    if not flights:
-        console.print("[red]Aucun vol trouvé.[/red]")
-        return None
+def display_flights(flights):
+    table = Table(title="Vols disponibles")
+    table.add_column("Index", justify="center")
+    table.add_column("Vol")
+    table.add_column("Compagnie")
+    table.add_column("Départ")
+    table.add_column("Arrivée")
 
-    table = Table(title="Vols actifs")
-    table.add_column("Index", justify="center", style="cyan")
-    table.add_column("Flight", style="magenta")
-    table.add_column("Airline", style="green")
-    table.add_column("Origin", style="yellow")
-    table.add_column("Destination", style="yellow")
-
-    for idx, flight in enumerate(flights, start=1):
+    for i, flight in enumerate(flights):
         table.add_row(
-            str(idx),
+            str(i),
             flight.get("flight", "N/A"),
-            flight.get("airline", {}).get("name", "N/A"),
-            flight.get("airport", {}).get("origin", {}).get("name", "N/A"),
-            flight.get("airport", {}).get("destination", {}).get("name", "N/A"),
+            flight.get("airline", "N/A"),
+            flight.get("airport", {}).get("origin", "N/A"),
+            flight.get("airport", {}).get("destination", "N/A"),
         )
-
     console.print(table)
-
-    while True:
-        choice = IntPrompt.ask("Sélectionne un vol par son index (0 pour annuler)", default=0)
-        if choice == 0:
-            return None
-        if 1 <= choice <= len(flights):
-            return flights[choice - 1]
-        else:
-            console.print("[red]Choix invalide. Réessaie.[/red]")
 
 def track_flight(flight_id, interval=10):
     console.print(f"[bold green]Suivi du vol {flight_id} toutes les {interval} secondes[/bold green]")
@@ -86,29 +60,26 @@ def track_flight(flight_id, interval=10):
             
             aircraft = details.get('aircraft', {})
             trail = details.get('trail', [])
-            last_pos = trail[-1] if trail else {}
+            last_trail = trail[-1] if trail else {}
 
             info = {
-                'time': last_pos.get('ts'),
-                'latitude': last_pos.get('lat'),
-                'longitude': last_pos.get('lng'),
-                'altitude': last_pos.get('alt'),
-                'speed': last_pos.get('spd'),
-                'heading': last_pos.get('hd'),
-                'aircraft_model': aircraft.get('model', {}).get('code', 'N/A')
+                'time': last_trail.get('ts'),
+                'latitude': last_trail.get('lat'),
+                'longitude': last_trail.get('lng'),
+                'altitude': last_trail.get('alt'),
+                'speed': last_trail.get('spd'),
+                'heading': last_trail.get('hd'),
             }
 
             data_log.append(info)
 
-            table = Table(title=f"Position actuelle du vol {flight_id}")
+            table = Table(title="Position actuelle du vol")
             for key in info:
-                table.add_column(key.capitalize(), justify="center")
+                table.add_column(key, justify="center")
             table.add_row(*[str(info[k]) for k in info])
-            
             console.clear()
             console.print(table)
 
-            # Sauvegarde dans un fichier JSON
             with open(f"{flight_id}_log.json", "w") as f:
                 json.dump(data_log, f, indent=2)
 
@@ -119,31 +90,57 @@ def track_flight(flight_id, interval=10):
 def main():
     console.print("[bold blue]Bienvenue dans FlightRadar24 Tracker CLI[/bold blue]\n")
 
-    country_input = Prompt.ask("🌍 Entrez un pays (ex: France, Germany, Spain)").strip()
-    country_code, country_name = get_country_code_by_name(country_input)
+    country_name = Prompt.ask("🌍 Entrez un pays (ex: France, Germany, Spain)").strip()
 
-    if not country_code:
-        console.print(f"[red]Pays '{country_input}' inconnu.[/red]")
-        return
-
-    console.print(f"🔍 Recherche des aéroports pour : {country_name} ({country_code})")
-
+    console.print(f"🔍 Recherche des aéroports pour : {country_name}")
     airports = list_airports_by_country(country_name)
+
     if not airports:
         console.print("[red]Aucun aéroport trouvé pour ce pays.[/red]")
         return
 
-    console.print(f"[green]Trouvé {len(airports)} aéroports dans {country_name}.[/green]")
-    console.print("🔍 Recherche des vols actifs... cela peut prendre quelques secondes...")
+    # Afficher les aéroports disponibles
+    table_airports = Table(title=f"Aéroports en {country_name}")
+    table_airports.add_column("Index", justify="center")
+    table_airports.add_column("Nom")
+    table_airports.add_column("Code ICAO")
+    table_airports.add_column("Ville")
 
-    flights = get_flights_by_airports(airports)
-    if not flights:
-        console.print("[red]Aucun vol actif trouvé sur ces aéroports.[/red]")
+    for i, airport in enumerate(airports):
+        table_airports.add_row(
+            str(i),
+            airport.get("name", "N/A"),
+            airport.get("icao", "N/A"),
+            airport.get("city", "N/A")
+        )
+    console.print(table_airports)
+
+    # Choix de l'aéroport
+    airport_index = Prompt.ask(f"🔢 Choisissez un aéroport (0-{len(airports)-1})", default="0")
+    try:
+        airport_index = int(airport_index)
+        selected_airport = airports[airport_index]
+    except (ValueError, IndexError):
+        console.print("[red]Sélection invalide.[/red]")
         return
 
-    selected_flight = select_flight(flights)
-    if not selected_flight:
-        console.print("❌ Aucun vol sélectionné. Fin du programme.")
+    airport_code = selected_airport.get("icao")
+    console.print(f"🔍 Recherche des vols pour l'aéroport : {airport_code}")
+
+    flights = list_flights_by_airport(airport_code)
+
+    if not flights:
+        console.print("[red]Aucun vol trouvé pour cet aéroport.[/red]")
+        return
+
+    display_flights(flights)
+
+    flight_index = Prompt.ask(f"✈️ Choisissez un vol à suivre (0-{len(flights)-1})", default="0")
+    try:
+        flight_index = int(flight_index)
+        selected_flight = flights[flight_index]
+    except (ValueError, IndexError):
+        console.print("[red]Sélection invalide.[/red]")
         return
 
     flight_id = selected_flight.get("id")
@@ -151,7 +148,7 @@ def main():
         console.print("[red]Impossible de récupérer l'ID du vol sélectionné.[/red]")
         return
 
-    track_flight(flight_id, interval=10)
+    track_flight(flight_id)
 
 if __name__ == "__main__":
     main()
