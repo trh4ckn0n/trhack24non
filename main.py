@@ -4,7 +4,6 @@
 from FlightRadar24.api import FlightRadar24API
 import questionary
 from rich.console import Console
-from rich.table import Table
 import time
 import sys
 
@@ -28,6 +27,7 @@ def get_airports_for_country(country):
     filtered = []
     for a in airports:
         if a.country and a.country.lower() == country.lower():
+            # Récupérer coordonnées lat/lng ou position fallback
             lat = getattr(a, "lat", None)
             lng = getattr(a, "lng", None)
             if lat is None or lng is None:
@@ -50,7 +50,7 @@ def choose_airport(airports):
         choices.append(questionary.Choice(title=name, value=a))
     return questionary.select("🛫 Sélectionne un aéroport :", choices=choices).ask()
 
-def get_flights_near_airport(airport, radius_km=100):
+def get_flights_near_airport(airport, radius_km=150):
     lat = getattr(airport, "lat", None)
     lon = getattr(airport, "lng", None)
 
@@ -65,7 +65,14 @@ def get_flights_near_airport(airport, radius_km=100):
         return []
 
     try:
-        bounds = fr.get_bounds_by_point(lat, lon, radius_km * 1000)
+        # get_flights prend un paramètre 'bounds' = (lat_min, lon_min, lat_max, lon_max)
+        # On calcule une box autour de l'aéroport pour approximer le rayon
+        lat_min = lat - 1.5
+        lat_max = lat + 1.5
+        lon_min = lon - 1.5
+        lon_max = lon + 1.5
+        bounds = (lat_min, lon_min, lat_max, lon_max)
+
         flights = fr.get_flights(bounds=bounds)
         return flights
     except Exception as e:
@@ -78,9 +85,9 @@ def choose_flight(flights):
         return None
     choices = []
     for f in flights[:30]:
-        dep = f.origin_airport.icao if f.origin_airport else "??"
-        arr = f.destination_airport.icao if f.destination_airport else "??"
-        callsign = f.callsign or f.id or "??"
+        callsign = getattr(f, "callsign", None) or getattr(f, "id", None) or "??"
+        dep = getattr(f.origin_airport, "icao", "??") if f.origin_airport else "??"
+        arr = getattr(f.destination_airport, "icao", "??") if f.destination_airport else "??"
         title = f"{callsign} ({dep} → {arr})"
         choices.append(questionary.Choice(title=title, value=f))
     return questionary.select("✈️ Sélectionne un vol :", choices=choices).ask()
@@ -99,14 +106,13 @@ def track_flight(flight):
                 if not data:
                     console.print("[yellow]Pas de données disponibles pour ce vol pour le moment.[/yellow]")
                 else:
-                    # Affichage simple des infos utiles
-                    est_arrival = data.get("estimated_arrival_time")
-                    est_departure = data.get("estimated_departure_time")
                     lat = data.get("latitude")
                     lon = data.get("longitude")
                     altitude = data.get("altitude")
                     speed = data.get("speed")
                     heading = data.get("heading")
+                    est_arrival = data.get("estimated_arrival_time")
+                    est_departure = data.get("estimated_departure_time")
 
                     console.clear()
                     console.print(f"[bold cyan]Vol {callsign}[/bold cyan]")
@@ -130,6 +136,10 @@ def main():
 
     country = choose_country()
     airports = get_airports_for_country(country)
+    if not airports:
+        console.print("[red]Aucun aéroport disponible pour ce pays.[/red]")
+        sys.exit(1)
+
     airport = choose_airport(airports)
     if not airport:
         console.print("[red]Aucun aéroport sélectionné, sortie.[/red]")
@@ -137,6 +147,10 @@ def main():
 
     console.print(f"\nChargement des vols autour de l'aéroport [bold]{airport.icao} – {airport.name or 'Sans nom'}[/bold]...")
     flights = get_flights_near_airport(airport)
+    if not flights:
+        console.print("[yellow]Aucun vol trouvé autour de cet aéroport.[/yellow]")
+        sys.exit(0)
+
     flight = choose_flight(flights)
     if not flight:
         console.print("[yellow]Aucun vol sélectionné, sortie.[/yellow]")
