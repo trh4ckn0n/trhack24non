@@ -76,16 +76,15 @@ def choose_flight(flights):
         sys.exit(1)
     return flight
 
-def track_flight(flight):
-    callsign = getattr(flight, "callsign", "N/A")
-    console.print(f"[green]🔄 Tracking du vol {callsign} (CTRL+C pour arrêter)...[/green]")
+def track_flight(flight_id):
+    console.print(f"[green]🔄 Tracking du vol {flight_id} (CTRL+C pour arrêter)...[/green]")
     try:
         while True:
-            data = fr.get_flight_details(callsign)
+            data = fr.get_flight_details(flight_id)
             trail = data.get("trail", [])
             if trail:
                 pt = trail[-1]
-                table = Table(title=f"Position actuelle du vol {callsign}")
+                table = Table(title=f"Position actuelle du vol {flight_id}")
                 table.add_column("Latitude", justify="right")
                 table.add_column("Longitude", justify="right")
                 table.add_column("Altitude (ft)", justify="right")
@@ -113,7 +112,8 @@ def main():
     console.print(f"\n[blue]Chargement des vols autour de l'aéroport {airport.icao} – {airport.name}...[/blue]")
     flights = get_nearby_flights(airport)
     flight = choose_flight(flights)
-    track_flight(flight)
+    # Correction ici : passer l'id et non l'objet ou callsign
+    track_flight(flight.id)
 
 if __name__ == "__main__":
     main()
