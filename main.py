@@ -8,76 +8,65 @@ fr = FlightRadar24API()
 console = Console()
 
 def choose_country():
-    country = questionary.text("🌍 Entrez un pays (ex: France, Germany, Spain)").ask().strip()
-    return country
+    return questionary.text("🌍 Entrez un pays (ex: France, Spain, Italy)").ask().strip()
 
-def get_country_airports(country):
-    try:
-        airports = fr.get_airports()  # retourne des objets Airport
-        filtered = [a for a in airports if a.country == country]
-        return filtered
-    except Exception as e:
-        console.print(f"[red]Erreur récupération aéroports : {e}[/red]")
-        return []
+def list_airports(country):
+    airports = fr.get_airports()
+    return [a for a in airports if a.country.lower() == country.lower()]
 
 def choose_airport(airports):
-    if not airports:
-        return None
-    choices = [questionary.Choice(f"{a.icao} – {a.name}", value=a) for a in airports[:20]]
-    return questionary.select("🛫 Sélectionne un aéroport :", choices=choices).ask()
+    return questionary.select(
+        "🛫 Sélectionne un aéroport :",
+        choices=[questionary.Choice(f"{a.icao} – {a.name}", a) for a in airports[:20]]
+    ).ask()
 
-def get_airport_flights(icao):
-    try:
-        return fr.get_flights(icao)
-    except Exception as e:
-        console.print(f"[red]Erreur récupération vols : {e}[/red]")
-        return []
+def get_nearby_flights(airport, radius_km=100):
+    fr_bounds = fr.get_bounds_by_point(airport.lat, airport.lon, radius_km * 1000)
+    return fr.get_flights(bounds=fr_bounds)
 
 def choose_flight(flights):
-    if not flights:
-        return None
-    choices = [questionary.Choice(f"{f['flight']} – {f['airline']['name']}", value=f) for f in flights[:20]]
-    return questionary.select("✈️ Choisis un vol :", choices=choices).ask()
+    return questionary.select(
+        "✈️ Sélectionne un vol :",
+        choices=[questionary.Choice(f"{f.flight} – {f.airline['name']}", f) for f in flights[:20]]
+    ).ask()
 
 def track_flight(flight_id):
-    console.print(f"[green]🔄 Tracking du vol {flight_id}… (CTRL+C pour arrêter)[/green]")
+    console.print(f"[green]🔄 Tracking du vol {flight_id} (CTRL+C pour arrêter)…[/green]")
     try:
         while True:
             data = fr.get_flight_details(flight_id)
             trail = data.get("trail", [])
             if trail:
                 pt = trail[-1]
-                table = Table(title="📡 Dernière position")
-                table.add_column("Latitude"); table.add_column("Longitude")
-                table.add_column("Altitude"); table.add_column("Vitesse")
-                table.add_row(str(pt.get("lat")), str(pt.get("lng")), str(pt.get("alt")), str(pt.get("spd")))
-                console.clear(); console.print(table)
+                t = Table()
+                t.add_column("Lat"); t.add_column("Lon")
+                t.add_column("Alt"); t.add_column("Spd")
+                t.add_row(str(pt["lat"]), str(pt["lng"]), str(pt["alt"]), str(pt["spd"]))
+                console.clear(); console.print(t)
             else:
-                console.print("[yellow]Pas de données de vol disponibles.[/yellow]")
+                console.print("[yellow]Aucune donnée de position disponible.[/yellow]")
             time.sleep(5)
     except KeyboardInterrupt:
-        console.print("[yellow]⏹️ Suivi interrompu.[/yellow]")
+        console.print("[yellow]📌 Tracking interrompu.[/yellow]")
 
 def main():
     console.print("[bold cyan]Bienvenue dans FlightRadar24 Tracker CLI[/bold cyan]")
     country = choose_country()
-    airports = get_country_airports(country)
+    airports = list_airports(country)
+
     if not airports:
         console.print("[red]Aucun aéroport trouvé pour ce pays.[/red]")
         return
+
     airport = choose_airport(airports)
-    if not airport:
-        console.print("[red]Aucun aéroport sélectionné.[/red]")
-        return
-    flights = get_airport_flights(airport.icao)
+    flights = get_nearby_flights(airport)
+
     if not flights:
-        console.print("[red]Aucun vol trouvé depuis cet aéroport.[/red]")
+        console.print("[red]Aucun vol trouvé dans un rayon autour de l'aéroport.[/red]")
         return
+
     flight = choose_flight(flights)
-    if not flight:
-        console.print("[red]Aucun vol sélectionné.[/red]")
-        return
-    track_flight(flight['id'])
+    track_flight(flight.id)
 
 if __name__ == "__main__":
     main()
