@@ -65,7 +65,7 @@ def list_flights_around_airport(airport):
         if not flights and airport.iata:
             console.print(f"[yellow]Aucun vol trouvé avec ICAO, tentative avec IATA {airport.iata}...[/yellow]")
             flights = fr.get_flights(airport.iata)
-            console.print(f"[green]Nombre de vols récupérés avec IATA ({airport.iata}) : {len(flights)}[/green"])
+            console.print(f"[green]Nombre de vols récupérés avec IATA ({airport.iata}) : {len(flights)}[/green]")
     except Exception as e:
         console.print(f"[red]Erreur lors de la récupération des vols : {e}[/red]")
         return []
@@ -76,10 +76,8 @@ def list_flights_around_airport(airport):
 
     choices = []
     for f in flights:
-        # Récupération robuste des codes aéroport origine/destination
         dep = getattr(f, 'origin_airport_icao', None) or getattr(f, 'origin_airport_iata', None) or "??"
         arr = getattr(f, 'destination_airport_icao', None) or getattr(f, 'destination_airport_iata', None) or "??"
-
         title = f"{f.callsign} ({dep} → {arr})"
         choices.append(questionary.Choice(title=title, value=f))
     return choices
