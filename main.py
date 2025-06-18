@@ -5,7 +5,7 @@ from rich.console import Console
 
 console = Console()
 
-# Liste statique simple de pays (extraits)
+# Liste statique de pays pour choix utilisateur
 COUNTRIES = [
     "Belgium", "France", "Germany", "Spain", "Italy", "United Kingdom",
     "United States", "Canada", "Australia", "Netherlands"
@@ -20,14 +20,27 @@ def choose_country():
         console.print(f"[red]Pays '{country_input}' non trouvé, réessayez.[/red]")
 
 def choose_airport(fr, country):
-    airports = fr.get_airports(country)
-    if not airports:
-        console.print("[red]Aucun aéroport disponible pour ce pays.[/red]")
+    airports = fr.get_airports()  # <-- sans argument !
+    # airports est un dict {icao: airport_data}
+    # airport_data contient probablement 'name', 'country', 'iata', etc.
+
+    # Filtrer les aéroports qui appartiennent au pays choisi
+    filtered = {
+        icao: data for icao, data in airports.items()
+        if data.get("country") == country
+    }
+    if not filtered:
+        console.print(f"[red]Aucun aéroport trouvé pour le pays {country}[/red]")
         return None
+
     choices = [
-        questionary.Choice(title=f"{icao} – {airport['name']}", value={"icao": icao, "iata": airport["iata"], "name": airport["name"]})
-        for icao, airport in airports.items()
+        questionary.Choice(
+            title=f"{icao} – {airport['name']}",
+            value={"icao": icao, "iata": airport.get("iata"), "name": airport["name"]}
+        )
+        for icao, airport in filtered.items()
     ]
+
     selected = questionary.select("🛫 Sélectionne un aéroport", choices=choices).ask()
     return selected
 
@@ -48,13 +61,13 @@ def list_flights_around_airport(fr, airport):
     for f in flights:
         origin = getattr(f, "origin_airport_icao", "??")
         destination = getattr(f, "destination_airport_icao", "??")
-        callsign = getattr(f, "callsign", f.id if hasattr(f, "id") else "??")
+        callsign = getattr(f, "callsign", getattr(f, "id", "??"))
         title = f"{callsign} ({origin} → {destination})"
         flight_choices.append(questionary.Choice(title=title, value=f))
     return flight_choices
 
 def track_flight(fr, flight):
-    flight_id = flight.id if hasattr(flight, "id") else flight
+    flight_id = getattr(flight, "id", flight)
     console.print(f"\n🔄 Tracking du vol {flight_id} (CTRL+C pour arrêter)...\n")
     try:
         while True:
