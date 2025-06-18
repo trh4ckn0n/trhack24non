@@ -18,7 +18,8 @@ def get_country_code_by_name(name):
 
 def list_airports_by_country(country_name):
     try:
-        all_airports = fr.get_airports()
+        raw = fr.get_airports()
+        all_airports = json.loads(raw)
         airports = [a for a in all_airports if a.get("country") == country_name]
         return airports
     except Exception as e:
