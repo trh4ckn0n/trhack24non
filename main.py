@@ -12,7 +12,6 @@ def choose_country():
 
 def list_airports(country):
     airports = fr.get_airports()
-    # Filtre par nom de pays (insensible à la casse)
     return [a for a in airports if a.country and a.country.lower() == country.lower()]
 
 def choose_airport(airports):
@@ -29,7 +28,7 @@ def choose_flight(flights):
     return questionary.select(
         "✈️ Sélectionne un vol :",
         choices=[
-            questionary.Choice(f"{f.callsign} – {f.airline}", f)
+            questionary.Choice(f"{f.callsign} – {f.airline_iata}", f)
             for f in flights[:20]
         ]
     ).ask()
@@ -46,10 +45,8 @@ def track_flight(flight_id):
                 table.add_column("Latitude"); table.add_column("Longitude")
                 table.add_column("Altitude"); table.add_column("Vitesse")
                 table.add_row(
-                    str(pt.get("lat")),
-                    str(pt.get("lng")),
-                    str(pt.get("alt")),
-                    str(pt.get("spd"))
+                    str(pt.get("lat")), str(pt.get("lng")),
+                    str(pt.get("alt")), str(pt.get("spd"))
                 )
                 console.clear()
                 console.print(table)
@@ -60,10 +57,9 @@ def track_flight(flight_id):
         console.print("[yellow]📌 Tracking interrompu.[/yellow]")
 
 def main():
-    console.print("[bold cyan]Bienvenue dans FlightRadar24 Tracker CLI[/bold cyan]")
+    console.print("[bold cyan]Bienvenue dans FlightRadar24 Tracker CLI[/bold cyan]\n")
     country = choose_country()
     airports = list_airports(country)
-
     if not airports:
         console.print(f"[red]Aucun aéroport trouvé pour le pays '{country}'.[/red]")
         return
@@ -71,9 +67,8 @@ def main():
     sel_airport = choose_airport(airports)
     airport = fr.get_airport(code=sel_airport.icao)
     flights = get_nearby_flights(airport)
-
     if not flights:
-        console.print("[red]Aucun vol trouvé autour de l'aéroport sélectionné.[/red]")
+        console.print("[red]Aucun vol trouvé autour de ton aéroport sélectionné.[/red]")
         return
 
     sel_flight = choose_flight(flights)
