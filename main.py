@@ -5,40 +5,45 @@ from rich.console import Console
 
 console = Console()
 
-# Liste statique de pays pour choix utilisateur
-COUNTRIES = [
-    "Belgium", "France", "Germany", "Spain", "Italy", "United Kingdom",
-    "United States", "Canada", "Australia", "Netherlands"
-]
+def get_countries_from_airports(airports):
+    # Extraire la liste unique des pays des aéroports
+    countries = set()
+    for airport in airports:
+        country = getattr(airport, "country", None) or airport.get("country")
+        if country:
+            countries.add(country)
+    return sorted(list(countries))
 
-def choose_country():
-    console.print("Pays disponibles (extrait) : " + ", ".join(COUNTRIES))
+def choose_country(countries):
+    console.print("Pays disponibles (extrait) : " + ", ".join(countries[:20]) + " ...")
     while True:
         country_input = questionary.text("🌍 Entrez un pays (ex: France, Spain, Italy)").ask()
-        if country_input in COUNTRIES:
+        if country_input in countries:
             return country_input
         console.print(f"[red]Pays '{country_input}' non trouvé, réessayez.[/red]")
 
 def choose_airport(fr, country):
-    airports = fr.get_airports()  # <-- sans argument !
-    # airports est un dict {icao: airport_data}
-    # airport_data contient probablement 'name', 'country', 'iata', etc.
+    airports = fr.get_airports()  # C’est une liste
 
-    # Filtrer les aéroports qui appartiennent au pays choisi
-    filtered = {
-        icao: data for icao, data in airports.items()
-        if data.get("country") == country
-    }
+    filtered = [
+        airport for airport in airports
+        if (getattr(airport, "country", None) or airport.get("country")) == country
+    ]
+
     if not filtered:
         console.print(f"[red]Aucun aéroport trouvé pour le pays {country}[/red]")
         return None
 
     choices = [
         questionary.Choice(
-            title=f"{icao} – {airport['name']}",
-            value={"icao": icao, "iata": airport.get("iata"), "name": airport["name"]}
+            title=f"{getattr(airport, 'icao', '')} – {getattr(airport, 'name', '')}",
+            value={
+                "icao": getattr(airport, "icao", ""),
+                "iata": getattr(airport, "iata", ""),
+                "name": getattr(airport, "name", "")
+            }
         )
-        for icao, airport in filtered.items()
+        for airport in filtered
     ]
 
     selected = questionary.select("🛫 Sélectionne un aéroport", choices=choices).ask()
@@ -102,7 +107,9 @@ def main():
     console.print("[bold green]Bienvenue dans FlightRadar24 Tracker CLI[/bold green]\n")
     fr = FlightRadar24API()
 
-    country = choose_country()
+    airports = fr.get_airports()
+    countries = get_countries_from_airports(airports)
+    country = choose_country(countries)
     airport = choose_airport(fr, country)
     if not airport:
         return
