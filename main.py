@@ -73,42 +73,6 @@ def list_flights_around_airport(fr, airport):
     return flight_choices
 
 def track_flight(fr, flight):
-    # Ici flight est un objet complet, on récupère l'id
-    flight_id = getattr(flight, "id", None)
-    if not flight_id:
-        console.print("[red]Erreur : impossible de récupérer l'ID du vol.[/red]")
-        return
-
-    console.print(f"\n🔄 Tracking du vol {flight_id} (CTRL+C pour arrêter)...\n")
-    try:
-        while True:
-            data = fr.get_flight_details(flight)
-            if not data:
-                console.print("[red]Impossible de récupérer les détails du vol.[/red]")
-                break
-
-            callsign = data.get("identification", {}).get("callsign", "N/A")
-            status = data.get("status", {}).get("text", "N/A")
-            origin = data.get("airport", {}).get("origin", {}).get("code", "N/A")
-            destination = data.get("airport", {}).get("destination", {}).get("code", "N/A")
-            trail = data.get("trail", [{}])[-1]
-            altitude = trail.get("altitude", "N/A")
-            speed = trail.get("groundspeed", "N/A")
-            latitude = trail.get("lat", "N/A")
-            longitude = trail.get("lng", "N/A")
-
-            console.clear()
-            console.print(f"[bold cyan]Vol : {callsign}[/bold cyan]")
-            console.print(f"Statut : {status}")
-            console.print(f"Origine : {origin} → Destination : {destination}")
-            console.print(f"Altitude : {altitude} pieds")
-            console.print(f"Vitesse sol : {speed} kt")
-            console.print(f"Position GPS : {latitude}, {longitude}")
-
-            time.sleep(5)
-    except KeyboardInterrupt:
-        console.print("\n[red]Tracking arrêté par l'utilisateur.[/red]")
-def track_flight(fr, flight):
     flight_id = getattr(flight, "id", flight)
     console.print(f"\n🔄 Tracking du vol {flight_id} (CTRL+C pour arrêter)...\n")
     try:
