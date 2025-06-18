@@ -50,7 +50,6 @@ def choose_airport(fr, country):
     return selected
 
 def list_flights_around_airport(fr, airport):
-def list_flights_around_airport(fr, airport):
     console.print(f"\nChargement des vols autour de l'aéroport {airport['icao']} – {airport['name']}...\n")
     flights = fr.get_flights(airport["icao"])
     console.print(f"Nombre de vols récupérés avec ICAO ({airport['icao']}) : {len(flights)}")
