@@ -5,18 +5,19 @@ from rich.console import Console
 
 console = Console()
 
-def choose_country(fr):
-    countries = fr.get_countries()
-    countries_sorted = sorted(countries.keys())
+# Liste statique simple de pays (extraits)
+COUNTRIES = [
+    "Belgium", "France", "Germany", "Spain", "Italy", "United Kingdom",
+    "United States", "Canada", "Australia", "Netherlands"
+]
 
-    console.print("Pays disponibles (extrait) : " + ", ".join(countries_sorted[:50]) + " ...")
+def choose_country():
+    console.print("Pays disponibles (extrait) : " + ", ".join(COUNTRIES))
     while True:
         country_input = questionary.text("🌍 Entrez un pays (ex: France, Spain, Italy)").ask()
-        country_input = country_input.strip()
-        if country_input in countries:
+        if country_input in COUNTRIES:
             return country_input
-        else:
-            console.print(f"[red]Pays '{country_input}' non trouvé, réessayez.[/red]")
+        console.print(f"[red]Pays '{country_input}' non trouvé, réessayez.[/red]")
 
 def choose_airport(fr, country):
     airports = fr.get_airports(country)
@@ -88,7 +89,7 @@ def main():
     console.print("[bold green]Bienvenue dans FlightRadar24 Tracker CLI[/bold green]\n")
     fr = FlightRadar24API()
 
-    country = choose_country(fr)
+    country = choose_country()
     airport = choose_airport(fr, country)
     if not airport:
         return
