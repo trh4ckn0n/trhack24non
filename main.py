@@ -1,15 +1,23 @@
 import flightradar24
 import json
+import csv
 import time
+import questionary
 from rich.console import Console
 from rich.table import Table
-import questionary
 
 fr = flightradar24.Api()
 console = Console()
 
-def track_flight(flight_id, interval=10):
-    console.print(f"[bold green]Suivi du vol {flight_id} toutes les {interval} secondes[/bold green]")
+def save_to_csv(filename, data):
+    keys = data[0].keys()
+    with open(filename, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=keys)
+        writer.writeheader()
+        writer.writerows(data)
+
+def track_flight(flight_id, callsign, interval=10):
+    console.print(f"[bold green]Suivi du vol {callsign} (ID: {flight_id}) toutes les {interval} secondes[/bold green]")
     data_log = []
 
     try:
@@ -18,102 +26,91 @@ def track_flight(flight_id, interval=10):
             if not details:
                 console.print("[bold red]Données introuvables pour ce vol.[/bold red]")
                 break
-
-            trail = details['trail'][-1] if details['trail'] else {}
-
+            
+            trail = details.get('trail', [])
+            last_pos = trail[-1] if trail else {}
             info = {
-                'time': trail.get('ts'),
-                'latitude': trail.get('lat'),
-                'longitude': trail.get('lng'),
-                'altitude': trail.get('alt'),
-                'speed': trail.get('spd'),
-                'heading': trail.get('hd'),
+                'time': last_pos.get('ts'),
+                'latitude': last_pos.get('lat'),
+                'longitude': last_pos.get('lng'),
+                'altitude': last_pos.get('alt'),
+                'speed': last_pos.get('spd'),
+                'heading': last_pos.get('hd'),
             }
 
             data_log.append(info)
 
-            table = Table(title="📍 Position actuelle du vol")
-            for key in info:
-                table.add_column(key, justify="center")
+            table = Table(title="Position actuelle du vol")
+            for k in info: table.add_column(k, justify="center")
             table.add_row(*[str(info[k]) for k in info])
             console.clear()
             console.print(table)
 
-            with open(f"{flight_id}_log.json", "w") as f:
+            with open(f"{callsign}_log.json", "w") as f:
                 json.dump(data_log, f, indent=2)
+            save_to_csv(f"{callsign}_log.csv", data_log)
 
             time.sleep(interval)
+
     except KeyboardInterrupt:
-        console.print("[bold yellow]🛑 Arrêt manuel du tracking.[/bold yellow]")
+        console.print("[bold yellow]Arrêt manuel du tracking.[/bold yellow]")
 
 def list_flights_by_area_and_filter():
-    # Demander une zone géographique (valeurs par défaut : Europe)
-    north = float(questionary.text("Latitude nord (ex: 55)").ask() or 55)
-    south = float(questionary.text("Latitude sud (ex: 40)").ask() or 40)
-    west = float(questionary.text("Longitude ouest (ex: -5)").ask() or -5)
-    east = float(questionary.text("Longitude est (ex: 15)").ask() or 15)
+    console.print("[bold cyan]🔍 Sélection de zone géographique :[/bold cyan]")
+    north = float(questionary.text("Latitude nord (ex: 55)").ask())
+    south = float(questionary.text("Latitude sud (ex: 40)").ask())
+    west = float(questionary.text("Longitude ouest (ex: -5)").ask())
+    east = float(questionary.text("Longitude est (ex: 15)").ask())
 
-    flights = fr.get_flights(bounds=(north, west, south, east))
-    console.print(f"[bold blue]🛫 {len(flights)} vols trouvés dans cette zone[/bold blue]")
+    all_flights = fr.get_flights()
+    flights = [
+        f for f in all_flights
+        if f.get('latitude') and f.get('longitude') and
+           south <= f['latitude'] <= north and
+           west <= f['longitude'] <= east
+    ]
 
     if not flights:
-        console.print("[bold red]Aucun vol actif dans cette zone.[/bold red]")
+        console.print("[red]Aucun vol trouvé dans cette zone.[/red]")
         return None
 
-    # Filtrage
-    filter_mode = questionary.select(
-        "Filtrer les vols par :",
-        choices=["Aucun filtre", "Origine", "Destination"]
-    ).ask()
+    filter_icao = questionary.text("Filtrer par compagnie ? (ex: AFR, RYR ou vide pour tous)").ask().upper().strip()
+    if filter_icao:
+        flights = [f for f in flights if f.get('callsign', '').startswith(filter_icao)]
 
-    keyword = ""
-    if filter_mode != "Aucun filtre":
-        keyword = questionary.text("Entrez le nom ou le code IATA (ex: CDG, JFK)").ask().lower()
-
-    # Liste lisible
-    filtered_flights = []
-    for f in flights:
-        origin = f.get('origin', '') or ''
-        destination = f.get('destination', '') or ''
-        if filter_mode == "Origine" and keyword not in origin.lower():
-            continue
-        if filter_mode == "Destination" and keyword not in destination.lower():
-            continue
-
-        title = f"{f['callsign']} | {origin} → {destination} | {f.get('aircraft_code', '')}"
-        filtered_flights.append({"name": title, "value": f['id']})
-
-    if not filtered_flights:
-        console.print("[bold red]Aucun vol ne correspond à ce filtre.[/bold red]")
+    if not flights:
+        console.print("[red]Aucun vol ne correspond au filtre ICAO.[/red]")
         return None
 
-    selected_id = questionary.select("✈️ Sélectionne un vol à suivre :", choices=filtered_flights).ask()
-    return selected_id
+    # On limite à 20 vols pour éviter un menu trop long
+    choices = [
+        questionary.Choice(
+            f"{f['callsign']} | {f.get('origin_airport_iata', '???')} → {f.get('destination_airport_iata', '???')}", value=f
+        )
+        for f in flights[:20]
+    ]
+
+    flight = questionary.select("✈️ Choisis un vol à suivre :", choices=choices).ask()
+    return flight
 
 if __name__ == "__main__":
-    mode = questionary.select(
+    method = questionary.select(
         "🔍 Comment veux-tu sélectionner le vol ?",
-        choices=["Recherche par numéro", "Explorer les vols actifs par zone"]
+        choices=["Explorer les vols actifs par zone", "Saisir manuellement le code de vol"]
     ).ask()
 
-    if mode == "Recherche par numéro":
-        flight_code = input("🔎 Entrez le numéro de vol (ex: AFR1234) : ").strip().upper()
-        search_results = fr.search(flight_code)
+    selected_flight = None
 
-        if not search_results or not search_results['results']:
-            console.print("[bold red]Aucun vol trouvé avec ce code.[/bold red]")
-        else:
-            flights = search_results['results']
-            options = []
-
-            for f in flights:
-                label = f"{f.get('airline', {}).get('name', '?')} | {f.get('flight', {}).get('iata', '??')} | {f.get('airport', {}).get('origin', {}).get('code', '???')} → {f.get('airport', {}).get('destination', {}).get('code', '???')} | {f.get('status', 'N/A')}"
-                options.append({"name": label, "value": f['id']})
-
-            selected_id = questionary.select("✈️ Sélectionne un vol :", choices=options).ask()
-            track_flight(selected_id)
+    if method == "Explorer les vols actifs par zone":
+        selected_flight = list_flights_by_area_and_filter()
+        if selected_flight:
+            track_flight(selected_flight['id'], selected_flight['callsign'])
 
     else:
-        flight_id = list_flights_by_area_and_filter()
-        if flight_id:
-            track_flight(flight_id)
+        code = questionary.text("Entrez le numéro de vol (ex: AFR1234)").ask().strip().upper()
+        results = fr.search(code)
+        if results and results.get('results'):
+            f = results['results'][0]
+            track_flight(f['id'], f['detail']['flight'])
+        else:
+            console.print("[bold red]Aucun résultat pour ce vol.[/bold red]")
