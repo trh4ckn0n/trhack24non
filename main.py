@@ -2,7 +2,7 @@ from FlightRadar24 import FlightRadar24API
 import questionary
 from rich.console import Console
 from rich.table import Table
-import json, time
+import time
 
 fr = FlightRadar24API()
 console = Console()
@@ -13,8 +13,8 @@ def choose_country():
 
 def get_country_airports(country):
     try:
-        airports = fr.get_airports()  # pas d'argument ici !
-        filtered = [a for a in airports if a.get("country") == country]
+        airports = fr.get_airports()  # retourne des objets Airport
+        filtered = [a for a in airports if a.country == country]
         return filtered
     except Exception as e:
         console.print(f"[red]Erreur récupération aéroports : {e}[/red]")
@@ -23,7 +23,7 @@ def get_country_airports(country):
 def choose_airport(airports):
     if not airports:
         return None
-    choices = [questionary.Choice(f"{a['icao']} – {a['name']}", value=a) for a in airports[:20]]
+    choices = [questionary.Choice(f"{a.icao} – {a.name}", value=a) for a in airports[:20]]
     return questionary.select("🛫 Sélectionne un aéroport :", choices=choices).ask()
 
 def get_airport_flights(icao):
@@ -69,7 +69,7 @@ def main():
     if not airport:
         console.print("[red]Aucun aéroport sélectionné.[/red]")
         return
-    flights = get_airport_flights(airport['icao'])
+    flights = get_airport_flights(airport.icao)
     if not flights:
         console.print("[red]Aucun vol trouvé depuis cet aéroport.[/red]")
         return
