@@ -57,17 +57,27 @@ def choose_airport(airports):
     return questionary.select("🛫 Sélectionne un aéroport :", choices=choices).ask()
 
 def list_flights_around_airport(airport):
+    console.print(f"[blue]Récupération des vols autour de l'aéroport {airport.icao} ({airport.iata})...[/blue]")
+    flights = []
     try:
+        # Essai avec ICAO
         flights = fr.get_flights(airport.icao)
+        console.print(f"[green]Nombre de vols récupérés avec ICAO ({airport.icao}) : {len(flights)}[/green]")
+        # Si aucun vol, on tente avec IATA si dispo
+        if not flights and airport.iata:
+            console.print(f"[yellow]Aucun vol trouvé avec ICAO, tentative avec IATA {airport.iata}...[/yellow]")
+            flights = fr.get_flights(airport.iata)
+            console.print(f"[green]Nombre de vols récupérés avec IATA ({airport.iata}) : {len(flights)}[/green]")
     except Exception as e:
         console.print(f"[red]Erreur lors de la récupération des vols : {e}[/red]")
         return []
+
     if not flights:
         console.print("[yellow]Aucun vol trouvé autour de cet aéroport.[/yellow]")
         return []
+
     choices = []
     for f in flights:
-        # Sécurité sur les attributs
         dep = f.origin_airport.icao if f.origin_airport else "??"
         arr = f.destination_airport.icao if f.destination_airport else "??"
         title = f"{f.callsign} ({dep} → {arr})"
