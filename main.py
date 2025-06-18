@@ -33,11 +33,11 @@ def choose_flight(flights):
         ]
     ).ask()
 
-def track_flight(flight_id):
-    console.print(f"[green]🔄 Tracking du vol {flight_id}… (CTRL+C pour arrêter)[/green]")
+def track_flight(flight):
+    console.print(f"[green]🔄 Tracking du vol {flight.callsign}… (CTRL+C pour arrêter)[/green]")
     try:
         while True:
-            data = fr.get_flight_details(flight_id)
+            data = fr.get_flight_details(flight.id)
             trail = data.get("trail", [])
             if trail:
                 pt = trail[-1]
@@ -55,7 +55,6 @@ def track_flight(flight_id):
             time.sleep(5)
     except KeyboardInterrupt:
         console.print("[yellow]📌 Tracking interrompu.[/yellow]")
-
 def main():
     console.print("[bold cyan]Bienvenue dans FlightRadar24 Tracker CLI[/bold cyan]\n")
     country = choose_country()
@@ -72,7 +71,8 @@ def main():
         return
 
     sel_flight = choose_flight(flights)
-    track_flight(sel_flight.id)
+    track_flight(sel_flight)
+
 
 if __name__ == "__main__":
     main()
