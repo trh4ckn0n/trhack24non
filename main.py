@@ -31,15 +31,20 @@ def choose_airport(airports):
     return selected
 
 def get_nearby_flights(airport, radius_km=100):
-    # Récupère l'aéroport précis avec lat/lon
-    airport_detail = fr.get_airport(code=airport.icao)
-    if not airport_detail or not hasattr(airport_detail, 'lat') or not hasattr(airport_detail, 'lon'):
-        console.print("[red]Impossible de récupérer les coordonnées de l'aéroport.[/red]")
+    if not hasattr(airport, 'position') or not airport.position:
+        console.print("[red]Impossible de récupérer la position de l'aéroport (attribut 'position' manquant).[/red]")
         exit(1)
-    bounds = fr.get_bounds_by_point(airport_detail.lat, airport_detail.lon, radius_km * 1000)
+
+    lat = getattr(airport.position, 'lat', None)
+    lon = getattr(airport.position, 'lng', None)
+
+    if lat is None or lon is None:
+        console.print("[red]Impossible de récupérer latitude ou longitude de l'aéroport.[/red]")
+        exit(1)
+
+    bounds = fr.get_bounds_by_point(lat, lon, radius_km * 1000)
     flights = fr.get_flights(bounds=bounds)
     return flights
-
 def choose_flight(flights):
     if not flights:
         console.print("[red]Aucun vol trouvé dans le rayon autour de l'aéroport.[/red]")
