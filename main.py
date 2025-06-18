@@ -1,74 +1,67 @@
 import time
-import sys
 from FlightRadar24.api import FlightRadar24
 import questionary
 from rich.console import Console
 
 console = Console()
-fr = FlightRadar24()
 
-def choose_country():
+def choose_country(fr):
     countries = fr.get_countries()
-    countries_names = sorted([c['name'] for c in countries])
-    console.print(f"Pays disponibles (extrait) : {', '.join(countries_names[:30])} ...")
-    while True:
-        country_name = questionary.text("🌍 Entrez un pays (ex: France, Spain, Italy)").ask()
-        if country_name in countries_names:
-            return country_name
-        console.print("[red]Pays non disponible, essaie encore.[/red]")
+    countries_sorted = sorted(countries.keys())
 
-def choose_airport(country_name):
-    airports = fr.get_airports(country_name)
+    console.print("Pays disponibles (extrait) : " + ", ".join(countries_sorted[:50]) + " ...")
+    while True:
+        country_input = questionary.text("🌍 Entrez un pays (ex: France, Spain, Italy)").ask()
+        country_input = country_input.strip()
+        if country_input in countries:
+            return country_input
+        else:
+            console.print(f"[red]Pays '{country_input}' non trouvé, réessayez.[/red]")
+
+def choose_airport(fr, country):
+    airports = fr.get_airports(country)
     if not airports:
         console.print("[red]Aucun aéroport disponible pour ce pays.[/red]")
         return None
-
-    choices = []
-    for icao, airport in airports.items():
-        # Affiche ICAO + nom
-        title = f"{icao} – {airport['name']}"
-        choices.append(questionary.Choice(title=title, value=icao))
-
-    airport_icao = questionary.select("🛫 Sélectionne un aéroport :", choices=choices).ask()
-    selected = airports.get(airport_icao)
+    # Création d'une liste de choix formatée
+    choices = [
+        questionary.Choice(title=f"{icao} – {airport['name']}", value={"icao": icao, "iata": airport["iata"], "name": airport["name"]})
+        for icao, airport in airports.items()
+    ]
+    selected = questionary.select("🛫 Sélectionne un aéroport", choices=choices).ask()
     if selected:
-        console.print(f"Vous avez choisi : {airport_icao} – {selected['name']}")
-        # Retourne l'objet complet (avec ICAO, IATA, etc)
-        return {'icao': airport_icao, **selected}
+        return selected
     else:
         return None
 
-def list_flights_around_airport(airport):
-    icao = airport['icao']
-    iata = airport.get('iata')
-    console.print(f"Chargement des vols autour de l'aéroport {icao} – {airport['name']}...\n")
-
-    flights = fr.get_flights(icao)
-    console.print(f"Nombre de vols récupérés avec ICAO ({icao}) : {len(flights)}")
-
-    if len(flights) == 0 and iata:
-        flights = fr.get_flights(iata)
-        console.print(f"Aucun vol trouvé avec ICAO, tentative avec IATA {iata}...")
-        console.print(f"Nombre de vols récupérés avec IATA ({iata}) : {len(flights)}")
+def list_flights_around_airport(fr, airport):
+    console.print(f"\nChargement des vols autour de l'aéroport {airport['icao']} – {airport['name']}...\n")
+    # Essaye avec ICAO d'abord
+    flights = fr.get_flights(airport["icao"])
+    console.print(f"Nombre de vols récupérés avec ICAO ({airport['icao']}) : {len(flights)}")
+    if len(flights) == 0 and airport["iata"]:
+        console.print(f"Aucun vol trouvé avec ICAO, tentative avec IATA {airport['iata']}...")
+        flights = fr.get_flights(airport["iata"])
+        console.print(f"Nombre de vols récupérés avec IATA ({airport['iata']}) : {len(flights)}")
 
     if len(flights) == 0:
         console.print("[red]Aucun vol trouvé autour de cet aéroport.[/red]")
         return []
 
-    # Crée une liste de choix avec l'objet vol complet en value
-    choices = []
+    # Création d'une liste de choix de vols, stockant l'objet complet Flight
+    flight_choices = []
     for f in flights:
-        dep = getattr(f, 'origin_airport_icao', None) or getattr(f, 'origin_airport_iata', '??')
-        arr = getattr(f, 'destination_airport_icao', None) or getattr(f, 'destination_airport_iata', '??')
-        title = f"{f.callsign} ({dep} → {arr})"
-        choices.append(questionary.Choice(title=title, value=f))
+        # Certains attributs peuvent ne pas exister, gérons ça
+        origin = getattr(f, "origin_airport_icao", "??")
+        destination = getattr(f, "destination_airport_icao", "??")
+        callsign = getattr(f, "callsign", f.id if hasattr(f, "id") else "??")
+        title = f"{callsign} ({origin} → {destination})"
+        flight_choices.append(questionary.Choice(title=title, value=f))
+    return flight_choices
 
-    return choices
-
-def track_flight(flight):
-    flight_id = flight.id
-    console.print(f"🔄 Tracking du vol {flight.callsign} (ID: {flight_id}) (CTRL+C pour arrêter)...")
-
+def track_flight(fr, flight):
+    flight_id = flight.id if hasattr(flight, "id") else flight
+    console.print(f"\n🔄 Tracking du vol {flight_id} (CTRL+C pour arrêter)...\n")
     try:
         while True:
             data = fr.get_flight_details(flight_id)
@@ -76,43 +69,47 @@ def track_flight(flight):
                 console.print("[red]Impossible de récupérer les détails du vol.[/red]")
                 break
 
-            lat = data.get('lat', '??')
-            lng = data.get('lng', '??')
-            altitude = data.get('altitude', '??')
-            speed = data.get('speed', '??')
-            heading = data.get('heading', '??')
+            # Exemples d'informations à afficher, adapte selon ce que tu veux voir
+            callsign = data.get("identification", {}).get("callsign", "N/A")
+            status = data.get("status", {}).get("text", "N/A")
+            origin = data.get("airport", {}).get("origin", {}).get("code", "N/A")
+            destination = data.get("airport", {}).get("destination", {}).get("code", "N/A")
+            altitude = data.get("trail", [{}])[-1].get("altitude", "N/A")
+            speed = data.get("trail", [{}])[-1].get("groundspeed", "N/A")
+            latitude = data.get("trail", [{}])[-1].get("lat", "N/A")
+            longitude = data.get("trail", [{}])[-1].get("lng", "N/A")
 
             console.clear()
-            console.print(f"[green]Tracking du vol {flight.callsign}[/green]")
-            console.print(f"Position : {lat}, {lng}")
-            console.print(f"Altitude : {altitude} m")
-            console.print(f"Vitesse : {speed} km/h")
-            console.print(f"Cap : {heading}°")
+            console.print(f"[bold cyan]Vol : {callsign}[/bold cyan]")
+            console.print(f"Statut : {status}")
+            console.print(f"Origine : {origin} → Destination : {destination}")
+            console.print(f"Altitude : {altitude} pieds")
+            console.print(f"Vitesse sol : {speed} kt")
+            console.print(f"Position GPS : {latitude}, {longitude}")
 
-            time.sleep(5)
+            time.sleep(5)  # Refresh toutes les 5 secondes
     except KeyboardInterrupt:
-        console.print("\n[bold red]Tracking arrêté par l'utilisateur.[/bold red]")
-        sys.exit(0)
+        console.print("\n[red]Tracking arrêté par l'utilisateur.[/red]")
 
 def main():
-    console.print("[bold cyan]Bienvenue dans FlightRadar24 Tracker CLI[/bold cyan]\n")
+    console.print("[bold green]Bienvenue dans FlightRadar24 Tracker CLI[/bold green]\n")
+    fr = FlightRadar24()
 
-    country = choose_country()
-    airport = choose_airport(country)
+    country = choose_country(fr)
+    airport = choose_airport(fr, country)
     if not airport:
-        console.print("[red]Sortie car aucun aéroport choisi.[/red]")
         return
 
-    flight_choices = list_flights_around_airport(airport)
-    if not flight_choices:
+    flights_choices = list_flights_around_airport(fr, airport)
+    if not flights_choices:
         return
 
-    selected_flight = questionary.select("✈️ Sélectionne un vol :", choices=flight_choices).ask()
+    selected_flight = questionary.select("✈️ Sélectionne un vol :", choices=flights_choices).ask()
     if not selected_flight:
-        console.print("[red]Aucun vol sélectionné, sortie.[/red]")
+        console.print("[red]Aucun vol sélectionné.[/red]")
         return
 
-    track_flight(selected_flight)
+    track_flight(fr, selected_flight)
 
 if __name__ == "__main__":
     main()
