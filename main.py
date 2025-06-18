@@ -21,7 +21,7 @@ def choose_airport(airports):
     ).ask()
 
 def get_nearby_flights(airport, radius_km=100):
-    fr_bounds = fr.get_bounds_by_point(airport.lat, airport.lon, radius_km * 1000)
+    fr_bounds = fr.get_bounds_by_point(airport.latitude, airport.longitude, radius_km * 1000)
     return fr.get_flights(bounds=fr_bounds)
 
 def choose_flight(flights):
@@ -58,7 +58,10 @@ def main():
         console.print("[red]Aucun aéroport trouvé pour ce pays.[/red]")
         return
 
-    airport = choose_airport(airports)
+    selected_airport = choose_airport(airports)
+
+    # Récupère les infos précises de l'aéroport (latitude, longitude, etc.)
+    airport = fr.get_airport(code=selected_airport.icao)
     flights = get_nearby_flights(airport)
 
     if not flights:
