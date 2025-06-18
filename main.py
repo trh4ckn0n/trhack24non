@@ -1,3 +1,6 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
 from FlightRadar24.api import FlightRadar24API
 import questionary
 from rich.console import Console
@@ -5,8 +8,8 @@ from rich.table import Table
 import time
 import sys
 
-fr = FlightRadar24API()
 console = Console()
+fr = FlightRadar24API()
 
 def choose_country():
     while True:
@@ -22,7 +25,19 @@ def get_airports_for_country(country):
         console.print(f"[red]Erreur lors de la récupération des aéroports : {e}[/red]")
         return []
 
-    filtered = [a for a in airports if a.country and a.country.lower() == country.lower()]
+    filtered = []
+    for a in airports:
+        if a.country and a.country.lower() == country.lower():
+            lat = getattr(a, "lat", None)
+            lng = getattr(a, "lng", None)
+            if lat is None or lng is None:
+                pos = getattr(a, "position", None)
+                if pos and isinstance(pos, dict):
+                    lat = pos.get("latitude")
+                    lng = pos.get("longitude")
+            if lat is not None and lng is not None:
+                filtered.append(a)
+
     return filtered
 
 def choose_airport(airports):
@@ -36,14 +51,17 @@ def choose_airport(airports):
     return questionary.select("🛫 Sélectionne un aéroport :", choices=choices).ask()
 
 def get_flights_near_airport(airport, radius_km=100):
-    if not hasattr(airport, 'position') or not airport.position:
-        console.print("[red]Impossible de récupérer la position de l'aéroport.[/red]")
-        return []
+    lat = getattr(airport, "lat", None)
+    lon = getattr(airport, "lng", None)
 
-    lat = airport.position.get('latitude')
-    lon = airport.position.get('longitude')
     if lat is None or lon is None:
-        console.print("[red]Les coordonnées latitude/longitude sont manquantes.[/red]")
+        pos = getattr(airport, "position", None)
+        if pos and isinstance(pos, dict):
+            lat = pos.get("latitude")
+            lon = pos.get("longitude")
+
+    if lat is None or lon is None:
+        console.print("[red]Impossible de récupérer la position de l'aéroport.[/red]")
         return []
 
     try:
@@ -56,91 +74,75 @@ def get_flights_near_airport(airport, radius_km=100):
 
 def choose_flight(flights):
     if not flights:
-        console.print("[red]Aucun vol trouvé dans le rayon autour de l'aéroport.[/red]")
+        console.print("[yellow]Aucun vol trouvé autour de cet aéroport.[/yellow]")
         return None
-
     choices = []
     for f in flights[:30]:
-        callsign = getattr(f, 'callsign', None) or "??"
-        origin = getattr(f.origin_airport, 'icao', '??') if hasattr(f, 'origin_airport') else "??"
-        destination = getattr(f.destination_airport, 'icao', '??') if hasattr(f, 'destination_airport') else "??"
-        display = f"{callsign} ({origin} → {destination})"
-        choices.append(questionary.Choice(title=display, value=f))
+        dep = f.origin_airport.icao if f.origin_airport else "??"
+        arr = f.destination_airport.icao if f.destination_airport else "??"
+        callsign = f.callsign or f.id or "??"
+        title = f"{callsign} ({dep} → {arr})"
+        choices.append(questionary.Choice(title=title, value=f))
     return questionary.select("✈️ Sélectionne un vol :", choices=choices).ask()
 
 def track_flight(flight):
-    if not flight:
-        console.print("[red]Aucun vol sélectionné pour le tracking.[/red]")
+    callsign = getattr(flight, "callsign", None) or getattr(flight, "id", None)
+    if not callsign:
+        console.print("[red]Erreur : impossible d'obtenir l'identifiant du vol.[/red]")
         return
 
-    flight_id = getattr(flight, 'id', None)
-    callsign = getattr(flight, 'callsign', None)
-
-    if not flight_id:
-        console.print("[red]Impossible de récupérer l'ID du vol pour le tracking.[/red]")
-        return
-
-    console.print(f"[green]🔄 Tracking du vol {callsign or flight_id} (CTRL+C pour arrêter)...[/green]")
+    console.print(f"🔄 Tracking du vol [bold green]{callsign}[/bold green] (CTRL+C pour arrêter)...")
     try:
         while True:
-            data = fr.get_flight_details(flight_id)
-            if not data:
-                console.print("[yellow]Aucune donnée détaillée disponible pour ce vol.[/yellow]")
+            try:
+                data = fr.get_flight_details(callsign)
+                if not data:
+                    console.print("[yellow]Pas de données disponibles pour ce vol pour le moment.[/yellow]")
+                else:
+                    # Affichage simple des infos utiles
+                    est_arrival = data.get("estimated_arrival_time")
+                    est_departure = data.get("estimated_departure_time")
+                    lat = data.get("latitude")
+                    lon = data.get("longitude")
+                    altitude = data.get("altitude")
+                    speed = data.get("speed")
+                    heading = data.get("heading")
+
+                    console.clear()
+                    console.print(f"[bold cyan]Vol {callsign}[/bold cyan]")
+                    console.print(f"Position : lat {lat}, lon {lon}")
+                    console.print(f"Altitude : {altitude} ft | Vitesse : {speed} km/h | Cap : {heading}°")
+                    console.print(f"Est. Départ : {est_departure}")
+                    console.print(f"Est. Arrivée : {est_arrival}")
+                    console.print("\n(Press Ctrl+C to stop tracking)")
                 time.sleep(5)
-                continue
-
-            trail = data.get("trail", [])
-            if trail:
-                pt = trail[-1]
-                table = Table(title=f"Position actuelle du vol {callsign or flight_id}")
-                table.add_column("Latitude", justify="center")
-                table.add_column("Longitude", justify="center")
-                table.add_column("Altitude (ft)", justify="center")
-                table.add_column("Vitesse (km/h)", justify="center")
-
-                lat = str(pt.get("lat", "N/A"))
-                lon = str(pt.get("lng", "N/A"))
-                alt = str(pt.get("alt", "N/A"))
-                spd = str(pt.get("spd", "N/A"))
-
-                table.add_row(lat, lon, alt, spd)
-
-                console.clear()
-                console.print(table)
-            else:
-                console.print("[yellow]Aucune donnée de position disponible pour le moment.[/yellow]")
-
-            time.sleep(5)
+            except KeyboardInterrupt:
+                console.print("\n[bold red]Tracking arrêté par l'utilisateur.[/bold red]")
+                break
+            except Exception as e:
+                console.print(f"[red]Erreur lors du tracking du vol : {e}[/red]")
+                time.sleep(5)
     except KeyboardInterrupt:
-        console.print("\n[yellow]📌 Tracking interrompu par l'utilisateur.[/yellow]")
+        console.print("\n[bold red]Programme arrêté.[/bold red]")
 
 def main():
-    console.print("[bold cyan]Bienvenue dans FlightRadar24 Tracker CLI[/bold cyan]\n")
+    console.print("[bold green]Bienvenue dans FlightRadar24 Tracker CLI[/bold green]\n")
 
     country = choose_country()
     airports = get_airports_for_country(country)
-    if not airports:
-        console.print(f"[red]Aucun aéroport trouvé pour le pays '{country}'.[/red]")
-        sys.exit(1)
-
     airport = choose_airport(airports)
     if not airport:
-        console.print("[red]Aucun aéroport sélectionné. Fin du programme.[/red]")
+        console.print("[red]Aucun aéroport sélectionné, sortie.[/red]")
         sys.exit(1)
 
-    console.print(f"\nChargement des vols autour de l'aéroport [bold]{airport.icao} – {airport.name}[/bold]...\n")
+    console.print(f"\nChargement des vols autour de l'aéroport [bold]{airport.icao} – {airport.name or 'Sans nom'}[/bold]...")
     flights = get_flights_near_airport(airport)
-    if not flights:
-        console.print("[red]Aucun vol trouvé autour de cet aéroport.[/red]")
-        sys.exit(1)
-
     flight = choose_flight(flights)
     if not flight:
-        console.print("[red]Aucun vol sélectionné. Fin du programme.[/red]")
-        sys.exit(1)
+        console.print("[yellow]Aucun vol sélectionné, sortie.[/yellow]")
+        sys.exit(0)
 
     track_flight(flight)
-
 
 if __name__ == "__main__":
     main()
