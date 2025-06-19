@@ -32,7 +32,6 @@ banner_frames = [
 ]
 
 def animate_banner(duration=5):
-    """Animation simple avec alternance des frames"""
     start = time.time()
     i = 0
     with Live(console=console, refresh_per_second=2) as live:
@@ -45,17 +44,14 @@ def animate_banner(duration=5):
     console.clear()
 
 def get_countries_from_airports(airports):
-    """Retourne la liste des pays distincts à partir des données d'aéroports"""
     countries = set()
     for airport in airports:
-        # FlightRadar24API peut retourner un dict ou un objet, on essaie les deux
         country = getattr(airport, "country", None) or airport.get("country")
         if country:
             countries.add(country)
     return sorted(countries)
 
 def choose_country(countries):
-    """Interaction pour choisir un pays parmi la liste"""
     console.print("[bold yellow]Pays disponibles (extrait) :[/bold yellow] " + ", ".join(countries[:20]) + " ...")
     while True:
         country_input = questionary.text("🌍 Entrez un pays (ex: France, Spain, Italy)").ask()
@@ -64,7 +60,6 @@ def choose_country(countries):
         console.print(f"[red]Pays '{country_input}' non trouvé, réessayez.[/red]")
 
 def choose_airport(fr, country):
-    """Choix de l'aéroport dans le pays sélectionné"""
     airports = fr.get_airports()
     filtered = [
         airport for airport in airports
@@ -85,12 +80,10 @@ def choose_airport(fr, country):
     return selected
 
 def list_flights_around_airport(fr, airport):
-    """Liste les vols autour de l'aéroport donné"""
     console.print(f"\n[bold green]Chargement des vols autour de l'aéroport {airport['icao']} – {airport['name']}...[/bold green]\n")
     flights = fr.get_flights(airport["icao"])
     console.print(f"Nombre de vols récupérés avec ICAO ({airport['icao']}) : {len(flights)}")
 
-    # Fallback si aucun vol avec ICAO, on tente IATA (plus rare)
     if len(flights) == 0 and airport["iata"]:
         console.print(f"Aucun vol trouvé avec ICAO, tentative avec IATA {airport['iata']}...")
         flights = fr.get_flights(airport["iata"])
@@ -102,15 +95,12 @@ def list_flights_around_airport(fr, airport):
 
     flight_choices = []
     for f in flights:
-        # callsign peut être None, on tente id sinon
         callsign = getattr(f, "callsign", None) or getattr(f, "id", "??")
         origin = getattr(f, "origin_airport_icao", "??")
         destination = getattr(f, "destination_airport_icao", "??")
         title = f"{callsign} ({origin} → {destination})"
         flight_choices.append(questionary.Choice(title=title, value=f))
     return flight_choices
-
-
 
 def track_flight(fr, flight, open_browser=False):
     flight_id = getattr(flight, "id", None)
@@ -188,7 +178,6 @@ def main():
 
     fr = FlightRadar24API()
 
-    # Récupération des aéroports
     airports = fr.get_airports()
     if not airports:
         console.print("[red]Erreur : impossible de récupérer la liste des aéroports.[/red]")
@@ -199,40 +188,19 @@ def main():
         console.print("[red]Erreur : impossible de déterminer les pays disponibles.[/red]")
         return
 
-    while True:
-        country = choose_country(countries)
-        if not country:
-            console.print("[red]Aucun pays sélectionné, arrêt du programme.[/red]")
-            break
+    country = choose_country(countries)
+    airport = choose_airport(fr, country)
+    if not airport:
+        return
 
-        airport = choose_airport(fr, country)
-        if not airport:
-            console.print("[red]Aucun aéroport sélectionné, retour à la sélection du pays.[/red]")
-            continue
+    flights = list_flights_around_airport(fr, airport)
+    if not flights:
+        return
 
-        flight_choices = list_flights_around_airport(fr, airport)
-        if not flight_choices:
-            console.print("[yellow]Aucun vol trouvé autour de cet aéroport.[/yellow]")
-            continue
-
-        selected_flight = questionary.select(
-            "✈️ Sélectionnez un vol à tracker :", choices=flight_choices
-        ).ask()
-
-        if not selected_flight:
-            console.print("[red]Aucun vol sélectionné, retour à la sélection de l'aéroport.[/red]")
-            continue
-
-        open_browser = questionary.confirm(
-            "Voulez-vous ouvrir les URLs Flightradar24 dans le navigateur ?", default=False
-        ).ask()
-
+    selected_flight = questionary.select("✈️ Sélectionnez un vol à suivre :", choices=flights).ask()
+    if selected_flight:
+        open_browser = questionary.confirm("🔗 Ouvrir les URLs Flightradar24 dans le navigateur ?").ask()
         track_flight(fr, selected_flight, open_browser=open_browser)
-
-        again = questionary.confirm("Voulez-vous suivre un autre vol ?", default=True).ask()
-        if not again:
-            console.print("[bold green]Merci d'avoir utilisé FlightRadar24 Tracker CLI. À bientôt ![/bold green]")
-            break
 
 if __name__ == "__main__":
     main()
