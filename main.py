@@ -110,8 +110,9 @@ def list_flights_around_airport(fr, airport):
         flight_choices.append(questionary.Choice(title=title, value=f))
     return flight_choices
 
+
+
 def track_flight(fr, flight, open_browser=False):
-    """Suivi en temps réel du vol sélectionné avec affichage dans un panneau rich"""
     flight_id = getattr(flight, "id", None)
     if not flight_id:
         console.print("[red]Erreur : impossible de récupérer l'ID du vol.[/red]")
@@ -120,7 +121,6 @@ def track_flight(fr, flight, open_browser=False):
     callsign = getattr(flight, "callsign", None) or getattr(flight, "id", None)
     hex_id = getattr(flight, "hex", None)
 
-    # Construction des URLs 2D et 3D Flightradar24
     fr24_url_2d = f"https://www.flightradar24.com/{callsign}/{hex_id}" if callsign and hex_id else None
     fr24_url_3d = f"{fr24_url_2d}/3d" if fr24_url_2d else None
 
@@ -128,59 +128,59 @@ def track_flight(fr, flight, open_browser=False):
         console.print("[green]Ouverture des URLs Flightradar24 dans votre navigateur...[/green]")
         webbrowser.open(fr24_url_2d)
         if fr24_url_3d:
-            time.sleep(1)  # Laisser 1s avant d'ouvrir la 3D
+            time.sleep(1)
             webbrowser.open(fr24_url_3d)
-
-    console.print("\n[bold cyan]URLs à copier si besoin :[/bold cyan]")
-    if fr24_url_2d:
-        console.print(f"2D : [underline blue]{fr24_url_2d}[/underline blue]")
-    if fr24_url_3d:
-        console.print(f"3D : [underline blue]{fr24_url_3d}[/underline blue]")
 
     console.print(f"\n🔄 [bold cyan]Tracking du vol {flight_id}[/bold cyan] (Ctrl+C pour arrêter)...\n")
 
     try:
-        while True:
-            data = fr.get_flight_details(flight)
-            if not data:
-                console.print("[red]Impossible de récupérer les détails du vol.[/red]")
-                break
+        with Live(refresh_per_second=1, console=console, screen=False) as live:
+            while True:
+                data = fr.get_flight_details(flight)
+                if not data:
+                    console.print("[red]Impossible de récupérer les détails du vol.[/red]")
+                    break
 
-            callsign = data.get("identification", {}).get("callsign", "N/A")
-            status = data.get("status", {}).get("text", "N/A")
-            origin_code = data.get("airport", {}).get("origin", {}).get("code", "N/A")
-            destination_code = data.get("airport", {}).get("destination", {}).get("code", "N/A")
-            trail = data.get("trail", [{}])[-1]
-            altitude = trail.get("altitude", "N/A")
-            speed = trail.get("groundspeed", "N/A")
-            latitude = trail.get("lat", None)
-            longitude = trail.get("lng", None)
+                callsign = data.get("identification", {}).get("callsign", "N/A")
+                status = data.get("status", {}).get("text", "N/A")
+                origin_code = data.get("airport", {}).get("origin", {}).get("code", "N/A")
+                destination_code = data.get("airport", {}).get("destination", {}).get("code", "N/A")
+                trail = data.get("trail", [{}])[-1]
+                altitude = trail.get("altitude", "N/A")
+                speed = trail.get("groundspeed", "N/A")
+                latitude = trail.get("lat", None)
+                longitude = trail.get("lng", None)
 
-            panel_text = (
-                f"[bold cyan]Vol :[/bold cyan] {callsign}\n"
-                f"[bold magenta]Statut :[/bold magenta] {status}\n"
-                f"[bold yellow]Origine → Destination :[/bold yellow] {origin_code} → {destination_code}\n"
-                f"[bold green]Altitude :[/bold green] {altitude} pieds\n"
-                f"[bold green]Vitesse sol :[/bold green] {speed} kt\n"
-            )
-            if latitude is not None and longitude is not None:
-                panel_text += f"[bold blue]Position GPS :[/bold blue] {latitude:.5f}, {longitude:.5f}\n"
-            else:
-                panel_text += "[yellow]Position GPS non disponible[/yellow]\n"
+                panel_text = (
+                    f"[bold cyan]Vol :[/bold cyan] {callsign}\n"
+                    f"[bold magenta]Statut :[/bold magenta] {status}\n"
+                    f"[bold yellow]Origine → Destination :[/bold yellow] {origin_code} → {destination_code}\n"
+                    f"[bold green]Altitude :[/bold green] {altitude} pieds\n"
+                    f"[bold green]Vitesse sol :[/bold green] {speed} kt\n"
+                )
+                if latitude is not None and longitude is not None:
+                    panel_text += f"[bold blue]Position GPS :[/bold blue] {latitude:.5f}, {longitude:.5f}\n"
+                else:
+                    panel_text += "[yellow]Position GPS non disponible[/yellow]\n"
 
-            # URLs permanentes affichées ici aussi
-            if fr24_url_2d:
-                panel_text += f"\n[bold underline blue]URL Flightradar24 2D :[/bold underline blue]\n{fr24_url_2d}\n"
-            if fr24_url_3d:
-                panel_text += f"\n[bold underline blue]URL Flightradar24 3D :[/bold underline blue]\n{fr24_url_3d}\n"
+                if fr24_url_2d:
+                    panel_text += f"\n[bold underline blue]URL Flightradar24 2D :[/bold underline blue]\n{fr24_url_2d}\n"
+                if fr24_url_3d:
+                    panel_text += f"\n[bold underline blue]URL Flightradar24 3D :[/bold underline blue]\n{fr24_url_3d}\n"
 
-            console.clear()
-            console.print(Panel(panel_text, title="📡 Suivi Vol en Temps Réel", subtitle="Appuyez Ctrl+C pour quitter"))
+                panel = Panel(
+                    Align.center(Text(panel_text)),
+                    title="📡 Suivi Vol en Temps Réel",
+                    subtitle="Appuyez Ctrl+C pour quitter",
+                    border_style="cyan"
+                )
+                live.update(panel)
 
-            time.sleep(5)
+                time.sleep(5)
 
     except KeyboardInterrupt:
         console.print("\n[red]Tracking arrêté par l'utilisateur.[/red]")
+
 def main():
     animate_banner()
 
