@@ -104,6 +104,8 @@ def list_flights_around_airport(fr, airport):
         flight_choices.append(questionary.Choice(title=title, value=f))
     return flight_choices
 
+# ... (tout le reste de ton code reste inchangé)
+
 def track_flight(fr, flight, open_browser=False):
     flight_id = getattr(flight, "id", None)
     if not flight_id:
@@ -122,6 +124,12 @@ def track_flight(fr, flight, open_browser=False):
         if fr24_url_3d:
             time.sleep(1)
             webbrowser.open(fr24_url_3d)
+
+    console.print("\n[bold cyan]URLs à copier si besoin :[/bold cyan]")
+    if fr24_url_2d:
+        console.print(f"2D : [underline blue]{fr24_url_2d}[/underline blue]")
+    if fr24_url_3d:
+        console.print(f"3D : [underline blue]{fr24_url_3d}[/underline blue]")
 
     console.print(f"\n🔄 [bold cyan]Tracking du vol {flight_id}[/bold cyan] (Ctrl+C pour arrêter)...\n")
     try:
@@ -154,6 +162,7 @@ def track_flight(fr, flight, open_browser=False):
             else:
                 panel_text += "[yellow]Position GPS non disponible[/yellow]\n"
 
+            # Toujours afficher les URLs dans le panneau pour copier facilement
             if fr24_url_2d:
                 panel_text += f"\n[bold underline blue]URL Flightradar24 2D :[/bold underline blue]\n{fr24_url_2d}\n"
             if fr24_url_3d:
@@ -165,6 +174,7 @@ def track_flight(fr, flight, open_browser=False):
     except KeyboardInterrupt:
         console.print("\n[red]Tracking arrêté par l'utilisateur.[/red]")
 
+# ... (le reste de ton code inchangé)
 def main():
     animate_banner()
 
