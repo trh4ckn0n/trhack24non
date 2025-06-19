@@ -1,11 +1,49 @@
 import time
 import webbrowser
+import sys
+import threading
 from FlightRadar24.api import FlightRadar24API
 import questionary
 from rich.console import Console
 from rich.panel import Panel
+from rich.text import Text
+from rich.live import Live
+from rich.align import Align
 
 console = Console()
+
+# Bannière animée simple ASCII
+banner_frames = [
+    r"""
+  _____ _       _     _       _____       _             _             
+ |  ___(_)_ __ | | __| | __ _|  ___|__ __| | ___  ___  | | ___   __ _ 
+ | |_  | | '_ \| |/ _` |/ _` | |_ / _ \_  / |/ _ \/ __| | |/ _ \ / _` |
+ |  _| | | | | | | (_| | (_| |  _|  __// /| |  __/\__ \_| | (_) | (_| |
+ |_|   |_|_| |_|_|\__,_|\__,_|_|  \___/___|_|\___||___(_)_|\___/ \__, |
+                                                                |___/ 
+""",
+    r"""
+  _____ _       _     _       _____       _             _             
+ |  ___(_)_ __ | | __| | __ _|  ___|__ __| | ___  ___  | | ___   __ _ 
+ | |_  | | '_ \| |/ _` |/ _` | |_ / _ \_  / |/ _ \/ __| | |/ _ \ / _` |
+ |  _| | | | | | | (_| | (_| |  _|  __// /| |  __/\__ \_| | (_) | (_| |
+ |_|   |_|_| |_|_|\__,_|\__,_|_|  \___/___|_|\___||___(_)_|\___/ \__, |
+                                                                 |___/ 
+   trhacknon - FlightRadar24 Tracker CLI
+""",
+]
+
+def animate_banner(duration=5):
+    start_time = time.time()
+    i = 0
+    with Live(refresh_per_second=2, console=console) as live:
+        while time.time() - start_time < duration:
+            frame = banner_frames[i % len(banner_frames)]
+            text = Text(frame, style="bold cyan")
+            live.update(Align.center(text))
+            time.sleep(0.5)
+            i += 1
+    console.clear()
 
 def get_countries_from_airports(airports):
     countries = set()
@@ -16,7 +54,7 @@ def get_countries_from_airports(airports):
     return sorted(list(countries))
 
 def choose_country(countries):
-    console.print("Pays disponibles (extrait) : " + ", ".join(countries[:20]) + " ...")
+    console.print("[bold yellow]Pays disponibles (extrait) :[/bold yellow] " + ", ".join(countries[:20]) + " ...")
     while True:
         country_input = questionary.text("🌍 Entrez un pays (ex: France, Spain, Italy)").ask()
         if country_input in countries:
@@ -47,7 +85,7 @@ def choose_airport(fr, country):
     return selected
 
 def list_flights_around_airport(fr, airport):
-    console.print(f"\nChargement des vols autour de l'aéroport {airport['icao']} – {airport['name']}...\n")
+    console.print(f"\n[bold green]Chargement des vols autour de l'aéroport {airport['icao']} – {airport['name']}...[/bold green]\n")
     flights = fr.get_flights(airport["icao"])
     console.print(f"Nombre de vols récupérés avec ICAO ({airport['icao']}) : {len(flights)}")
     if len(flights) == 0 and airport["iata"]:
@@ -72,12 +110,8 @@ def track_flight(fr, flight, open_browser=False):
         console.print("[red]Erreur : impossible de récupérer l'ID du vol.[/red]")
         return
 
-    # Récupérer callsign & hex pour URL officielle
     callsign = getattr(flight, "callsign", None) or getattr(flight, "id", None)
     hex_id = getattr(flight, "hex", None)
-
-    if not callsign or not hex_id:
-        console.print("[yellow]Impossible de récupérer callsign ou hex_id du vol pour URL FR24[/yellow]")
 
     fr24_url_2d = f"https://www.flightradar24.com/{callsign}/{hex_id}" if callsign and hex_id else None
     fr24_url_3d = f"{fr24_url_2d}/3d" if fr24_url_2d else None
@@ -86,10 +120,10 @@ def track_flight(fr, flight, open_browser=False):
         console.print("[green]Ouverture des URLs Flightradar24 dans votre navigateur...[/green]")
         webbrowser.open(fr24_url_2d)
         if fr24_url_3d:
-            time.sleep(1)  # petit délai entre ouverture des onglets
+            time.sleep(1)
             webbrowser.open(fr24_url_3d)
 
-    console.print(f"\n🔄 Tracking du vol {flight_id} (CTRL+C pour arrêter)...\n")
+    console.print(f"\n🔄 [bold cyan]Tracking du vol {flight_id}[/bold cyan] (Ctrl+C pour arrêter)...\n")
     try:
         while True:
             data = fr.get_flight_details(flight)
@@ -109,29 +143,31 @@ def track_flight(fr, flight, open_browser=False):
 
             console.clear()
             panel_text = (
-                f"[bold cyan]Vol : {callsign}[/bold cyan]\n"
-                f"Statut : {status}\n"
-                f"Origine : {origin} → Destination : {destination}\n"
-                f"Altitude : {altitude} pieds\n"
-                f"Vitesse sol : {speed} kt\n"
+                f"[bold cyan]Vol :[/bold cyan] {callsign}\n"
+                f"[bold magenta]Statut :[/bold magenta] {status}\n"
+                f"[bold yellow]Origine → Destination :[/bold yellow] {origin} → {destination}\n"
+                f"[bold green]Altitude :[/bold green] {altitude} pieds\n"
+                f"[bold green]Vitesse sol :[/bold green] {speed} kt\n"
             )
             if latitude is not None and longitude is not None:
-                panel_text += f"Position GPS : {latitude:.5f}, {longitude:.5f}\n"
+                panel_text += f"[bold blue]Position GPS :[/bold blue] {latitude:.5f}, {longitude:.5f}\n"
             else:
                 panel_text += "[yellow]Position GPS non disponible[/yellow]\n"
 
             if fr24_url_2d:
-                panel_text += f"[blue]URL Flightradar24 2D :[/blue] {fr24_url_2d}\n"
+                panel_text += f"\n[bold underline blue]URL Flightradar24 2D :[/bold underline blue]\n{fr24_url_2d}\n"
             if fr24_url_3d:
-                panel_text += f"[blue]URL Flightradar24 3D :[/blue] {fr24_url_3d}\n"
+                panel_text += f"\n[bold underline blue]URL Flightradar24 3D :[/bold underline blue]\n{fr24_url_3d}\n"
 
-            console.print(Panel(panel_text, title="Suivi Vol en Temps Réel", subtitle="Appuyez Ctrl+C pour quitter"))
+            console.print(Panel(panel_text, title="📡 Suivi Vol en Temps Réel", subtitle="Appuyez Ctrl+C pour quitter"))
 
             time.sleep(5)
     except KeyboardInterrupt:
         console.print("\n[red]Tracking arrêté par l'utilisateur.[/red]")
 
 def main():
+    animate_banner()
+
     console.print("[bold green]Bienvenue dans FlightRadar24 Tracker CLI[/bold green]\n")
     fr = FlightRadar24API()
 
@@ -151,7 +187,6 @@ def main():
         console.print("[red]Aucun vol sélectionné.[/red]")
         return
 
-    # Demander si on veut ouvrir la carte dans le navigateur
     open_map = questionary.confirm("Voulez-vous ouvrir les URLs Flightradar24 (2D et 3D) dans le navigateur ?").ask()
 
     track_flight(fr, selected_flight, open_browser=open_map)
