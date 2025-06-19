@@ -19,6 +19,7 @@ banner_frames = [
  |  _| | | | | | | (_| | (_| |  _|  __// /| |  __/\__ \_| | (_) | (_| |
  |_|   |_|_| |_|_|\__,_|\__,_|_|  \___/___|_|\___||___(_)_|\___/ \__, |
                                                                  |___/ 
+   trhacknon - FlightRadar24 Tracker CLI
 """,
     r"""
   _____ _       _     _       _____       _             _             
@@ -121,86 +122,52 @@ def track_flight(fr, flight, open_browser=False):
             time.sleep(1)
             webbrowser.open(fr24_url_3d)
 
+    console.print("\n[bold cyan]URLs à copier :[/bold cyan]")
+    if fr24_url_2d:
+        console.print("2D : " + fr24_url_2d)
+    if fr24_url_3d:
+        console.print("3D : " + fr24_url_3d)
+
     console.print(f"\n🔄 [bold cyan]Tracking du vol {flight_id}[/bold cyan] (Ctrl+C pour arrêter)...\n")
 
     try:
-        with Live(refresh_per_second=1, console=console, screen=False) as live:
-            while True:
-                data = fr.get_flight_details(flight)
-                if not data:
-                    console.print("[red]Impossible de récupérer les détails du vol.[/red]")
-                    break
+        while True:
+            data = fr.get_flight_details(flight)
+            if not data:
+                console.print("[red]Impossible de récupérer les détails du vol.[/red]")
+                break
 
-                callsign = data.get("identification", {}).get("callsign", "N/A")
-                status = data.get("status", {}).get("text", "N/A")
-                origin_code = data.get("airport", {}).get("origin", {}).get("code", "N/A")
-                destination_code = data.get("airport", {}).get("destination", {}).get("code", "N/A")
-                trail = data.get("trail", [{}])[-1]
-                altitude = trail.get("altitude", "N/A")
-                speed = trail.get("groundspeed", "N/A")
-                latitude = trail.get("lat", None)
-                longitude = trail.get("lng", None)
+            callsign = data.get("identification", {}).get("callsign", "N/A")
+            status = data.get("status", {}).get("text", "N/A")
+            origin_code = data.get("airport", {}).get("origin", {}).get("code", "N/A")
+            destination_code = data.get("airport", {}).get("destination", {}).get("code", "N/A")
+            trail = data.get("trail", [{}])[-1]
+            altitude = trail.get("altitude", "N/A")
+            speed = trail.get("groundspeed", "N/A")
+            latitude = trail.get("lat", None)
+            longitude = trail.get("lng", None)
 
-                panel_text = (
-                    f"[bold cyan]Vol :[/bold cyan] {callsign}\n"
-                    f"[bold magenta]Statut :[/bold magenta] {status}\n"
-                    f"[bold yellow]Origine → Destination :[/bold yellow] {origin_code} → {destination_code}\n"
-                    f"[bold green]Altitude :[/bold green] {altitude} pieds\n"
-                    f"[bold green]Vitesse sol :[/bold green] {speed} kt\n"
-                )
-                if latitude is not None and longitude is not None:
-                    panel_text += f"[bold blue]Position GPS :[/bold blue] {latitude:.5f}, {longitude:.5f}\n"
-                else:
-                    panel_text += "[yellow]Position GPS non disponible[/yellow]\n"
+            panel_text = (
+                f"[bold cyan]Vol :[/bold cyan] {callsign}\n"
+                f"[bold magenta]Statut :[/bold magenta] {status}\n"
+                f"[bold yellow]Origine → Destination :[/bold yellow] {origin_code} → {destination_code}\n"
+                f"[bold green]Altitude :[/bold green] {altitude} pieds\n"
+                f"[bold green]Vitesse sol :[/bold green] {speed} kt\n"
+            )
+            if latitude is not None and longitude is not None:
+                panel_text += f"[bold blue]Position GPS :[/bold blue] {latitude:.5f}, {longitude:.5f}\n"
+            else:
+                panel_text += "[yellow]Position GPS non disponible[/yellow]\n"
 
-                if fr24_url_2d:
-                    panel_text += f"\n[bold underline blue]URL Flightradar24 2D :[/bold underline blue]\n{fr24_url_2d}\n"
-                if fr24_url_3d:
-                    panel_text += f"\n[bold underline blue]URL Flightradar24 3D :[/bold underline blue]\n{fr24_url_3d}\n"
+            if fr24_url_2d:
+                panel_text += f"\nURL Flightradar24 2D : {fr24_url_2d}\n"
+            if fr24_url_3d:
+                panel_text += f"URL Flightradar24 3D : {fr24_url_3d}\n"
 
-                panel = Panel(
-                    Align.center(Text(panel_text)),
-                    title="📡 Suivi Vol en Temps Réel",
-                    subtitle="Appuyez Ctrl+C pour quitter",
-                    border_style="cyan"
-                )
-                live.update(panel)
+            console.clear()
+            console.print(Panel(panel_text, title="📡 Suivi Vol en Temps Réel", subtitle="Appuyez Ctrl+C pour quitter"))
 
-                time.sleep(5)
+            time.sleep(5)
 
     except KeyboardInterrupt:
-        console.print("\n[red]Tracking arrêté par l'utilisateur.[/red]")
-
-def main():
-    animate_banner()
-
-    console.print("[bold green]Bienvenue dans FlightRadar24 Tracker CLI[/bold green]\n")
-
-    fr = FlightRadar24API()
-
-    airports = fr.get_airports()
-    if not airports:
-        console.print("[red]Erreur : impossible de récupérer la liste des aéroports.[/red]")
-        return
-
-    countries = get_countries_from_airports(airports)
-    if not countries:
-        console.print("[red]Erreur : impossible de déterminer les pays disponibles.[/red]")
-        return
-
-    country = choose_country(countries)
-    airport = choose_airport(fr, country)
-    if not airport:
-        return
-
-    flights = list_flights_around_airport(fr, airport)
-    if not flights:
-        return
-
-    selected_flight = questionary.select("✈️ Sélectionnez un vol à suivre :", choices=flights).ask()
-    if selected_flight:
-        open_browser = questionary.confirm("🔗 Ouvrir les URLs Flightradar24 dans le navigateur ?").ask()
-        track_flight(fr, selected_flight, open_browser=open_browser)
-
-if __name__ == "__main__":
-    main()
+        console.print("\n[bold red]Suivi interrompu par l'utilisateur.[/bold red]")
