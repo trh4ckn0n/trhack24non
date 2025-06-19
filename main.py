@@ -156,7 +156,6 @@ def track_flight(fr, flight, open_browser=False):
             latitude = trail.get("lat", None)
             longitude = trail.get("lng", None)
 
-            # Préparer texte panneau affichage
             panel_text = (
                 f"[bold cyan]Vol :[/bold cyan] {callsign}\n"
                 f"[bold magenta]Statut :[/bold magenta] {status}\n"
@@ -169,7 +168,7 @@ def track_flight(fr, flight, open_browser=False):
             else:
                 panel_text += "[yellow]Position GPS non disponible[/yellow]\n"
 
-            # Ajout URLs permanentes
+            # URLs permanentes affichées ici aussi
             if fr24_url_2d:
                 panel_text += f"\n[bold underline blue]URL Flightradar24 2D :[/bold underline blue]\n{fr24_url_2d}\n"
             if fr24_url_3d:
@@ -182,7 +181,6 @@ def track_flight(fr, flight, open_browser=False):
 
     except KeyboardInterrupt:
         console.print("\n[red]Tracking arrêté par l'utilisateur.[/red]")
-
 def main():
     animate_banner()
 
